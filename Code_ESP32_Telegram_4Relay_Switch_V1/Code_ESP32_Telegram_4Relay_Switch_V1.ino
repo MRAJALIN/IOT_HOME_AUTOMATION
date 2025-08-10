@@ -1,0 +1,272 @@
+ /**********************************************************************************
+ *  TITLE: Telegram + Manual (Switch) control 4 Relays using ESP32 with Real time feedback
+ *  Click on the following links to learn more. 
+ *  YouTube Video: https://youtu.be/e4mtwrwoLnU
+ *  Related Blog : https://iotcircuithub.com/esp32-projects/
+ *  
+ *  This code is provided free for project purpose and fair use only.
+ *  Please do mail us to techstudycell@gmail.com if you want to use it commercially.
+ *  Copyrighted © by Tech StudyCell
+ *  
+ *  Preferences--> Aditional boards Manager URLs : 
+ *  https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_dev_index.json, http://arduino.esp8266.com/stable/package_esp8266com_index.json
+ *  
+ *  Download Board ESP32 (3.2.0) : https://github.com/espressif/arduino-esp32
+ *
+ *  Download the libraries 
+ *  UniversalTelegramBot Library (1.3.0):  https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot
+ *  AceButton Library (1.10.1): hhttps://github.com/bxparks/AceButton
+ **********************************************************************************/
+ 
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <WebServer.h>  // <-- New
+#include <UniversalTelegramBot.h>
+#include <AceButton.h>
+
+#define LED_BUILTIN 2
+
+using namespace ace_button;
+
+// Wi-Fi Credentials (Same Router, No Internet Required for local control)
+const char* ssid = "Airtel_raja_2060";
+const char* password = "air30349";
+
+// Telegram Bot
+const char* botToken = "8302149504:AAGer7qxSCQ96eapPkHGx1rYL171XKo7ngM";
+const long allowedChatIDs[] = {1874156167, 991581343};  // Add IDs here
+const int totalUsers = sizeof(allowedChatIDs) / sizeof(allowedChatIDs[0]);
+
+bool isUserAllowed(long id) {
+  for (int i = 0; i < totalUsers; i++) {
+    if (allowedChatIDs[i] == id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+WiFiClientSecure client;
+UniversalTelegramBot bot(botToken, client);
+
+// Local Web Server on port 80
+WebServer server(80); // <-- New
+
+// Relay and Switch Pins
+const int relayPins[4] = {23, 22, 21, 19};
+const int switchPins[4] = {13, 12, 14, 27};
+
+bool relayStates[4] = {false, false, false, false};
+
+// AceButton setup
+ButtonConfig config1, config2, config3, config4;
+AceButton button1(&config1), button2(&config2), button3(&config3), button4(&config4);
+
+void button1Handler(AceButton*, uint8_t, uint8_t);
+void button2Handler(AceButton*, uint8_t, uint8_t);
+void button3Handler(AceButton*, uint8_t, uint8_t);
+void button4Handler(AceButton*, uint8_t, uint8_t);
+
+void handleNewMessages(int numNewMessages);
+
+// -------------------- LOCAL WEB UI --------------------
+String htmlPage() {
+  String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Relay 4"};
+
+  String html = "<!DOCTYPE html><html><head><title>ESP32 Relay Control</title>";
+  html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
+  html += "<style>";
+  html += "body { font-family: Arial, sans-serif; margin: 0; padding: 0; text-align: center; background: linear-gradient(135deg, #f9f9f9, #d7e1ec); }";
+  html += "h1 { background-color: #333; color: white; padding: 15px; margin: 0; font-size: 22px; }";
+  html += ".container { display: flex; flex-direction: column; align-items: center; padding: 10px; }";
+  html += ".card { background: white; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 10px; padding: 15px; margin: 10px; width: 90%; max-width: 350px; }";
+  html += ".status { font-size: 18px; margin-bottom: 10px; font-weight: bold; }";
+  html += "button { padding: 10px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; width: 100%; }";
+  html += ".on { background-color: #4CAF50; color: white; }"; // Green ON
+  html += ".off { background-color: #f44336; color: white; }"; // Red OFF
+  html += ".btn-group { display: flex; gap: 10px; }"; // space between buttons
+  html += ".btn-group a { flex: 1; }"; // make links equally wide
+  html += "@media (max-width: 500px) { button { font-size: 14px; padding: 8px; } }";
+  html += "</style></head><body>";
+
+  html += "<h1>VASANTHAMANI HOME AUTOMATION</h1>";
+  html += "<div class='container'>";
+
+  for (int i = 0; i < 4; i++) {
+    String urlName = relayNames[i];
+    urlName.replace(" ", "_"); // modify in place
+
+    html += "<div class='card'>";
+    html += "<div class='status' style='color:" + String(relayStates[i] ? "green" : "red") + ";'>" +
+            relayNames[i] + ": " + (relayStates[i] ? "ON" : "OFF") + "</div>";
+    html += "<div class='btn-group'>";
+    html += "<a href='/" + urlName + "_ON'><button class='on'>ON</button></a>";
+    html += "<a href='/" + urlName + "_OFF'><button class='off'>OFF</button></a>";
+    html += "</div></div>";
+  }
+
+  html += "</div></body></html>";
+  return html;
+}
+
+void handleRoot() {
+  server.send(200, "text/html", htmlPage());
+}
+
+void relayControl(int relayNum, bool state) {
+  relayStates[relayNum] = state;
+  digitalWrite(relayPins[relayNum], state ? LOW : HIGH);
+}
+
+// -------------------- SETUP --------------------
+void setup() {
+  Serial.begin(115200);
+
+  // Relay setup
+  for (int i = 0; i < 4; i++) {
+    pinMode(relayPins[i], OUTPUT);
+    digitalWrite(relayPins[i], HIGH);
+    pinMode(switchPins[i], INPUT_PULLUP);
+  }
+
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  // Connect WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500); Serial.print(".");
+  }
+  Serial.println("\nConnected to WiFi: " + WiFi.localIP().toString());
+  digitalWrite(LED_BUILTIN, HIGH);
+
+  client.setInsecure();
+
+  // Button handlers
+  config1.setEventHandler(button1Handler);
+  config2.setEventHandler(button2Handler);
+  config3.setEventHandler(button3Handler);
+  config4.setEventHandler(button4Handler);
+
+  button1.init(switchPins[0]);
+
+  button2.init(switchPins[1]);
+  button3.init(switchPins[2]);
+  button4.init(switchPins[3]);
+
+  // Local Web Server routes
+server.on("/", handleRoot);
+
+String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Relay 4"};
+for (int i = 0; i < 4; i++) {
+  String urlName = relayNames[i];
+  urlName.replace(" ", "_"); // Same formatting as in HTML
+
+  server.on(("/" + urlName + "_ON").c_str(), [i]() {
+    relayControl(i, true);
+    server.send(200, "text/html", htmlPage());
+  });
+  server.on(("/" + urlName + "_OFF").c_str(), [i]() {
+    relayControl(i, false);
+    server.send(200, "text/html", htmlPage());
+  });
+}
+
+  server.begin();
+}
+
+// -------------------- LOOP --------------------
+void loop() {
+  // Manual switch check
+  button1.check();
+  button2.check();
+  button3.check();
+  button4.check();
+
+  // Handle local web server requests
+  server.handleClient();
+
+  // Telegram updates
+  int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+  if (numNewMessages > 0) handleNewMessages(numNewMessages);
+
+  delay(100);
+}
+
+// -------------------- TELEGRAM --------------------
+void handleNewMessages(int numNewMessages) {
+for (int i = 0; i < numNewMessages; i++) {
+    String chat_id = bot.messages[i].chat_id;
+    long chat_id_num = chat_id.toInt();
+
+    Serial.println("Message from Chat ID: " + chat_id); // Prints any sender ID
+
+    if (!isUserAllowed(chat_id_num)) {
+        bot.sendMessage(chat_id, "❌ You are not authorized to control this bot.");
+        continue;
+    }
+
+        String text = bot.messages[i].text;
+        Serial.println("Received command: " + text);
+
+        if (text == "/Tank_Light_ON") {
+            relayStates[0] = true;
+            digitalWrite(relayPins[0], LOW);
+            bot.sendMessage(chat_id, "Tank Light turned ON\n\n/Show_Menu", "");
+        } else if (text == "/Tank_Light_OFF") {
+            relayStates[0] = false;
+            digitalWrite(relayPins[0], HIGH);
+            bot.sendMessage(chat_id, "Tank Light turned OFF\n\n/Show_Menu", "");
+        } else if (text == "/House_Back_Light_ON") {
+            relayStates[1] = true;
+            digitalWrite(relayPins[1], LOW);
+            bot.sendMessage(chat_id, "House Back Light Turned ON\n\n/Show_Menu", "");
+        } else if (text == "/House_Back_Light_OFF") {
+            relayStates[1] = false;
+            digitalWrite(relayPins[1], HIGH);
+            bot.sendMessage(chat_id, "House Back Light Turned OFF\n\n/Show_Menu", "");
+        } else if (text == "/Room_Light_ON") {
+            relayStates[2] = true;
+            digitalWrite(relayPins[2], LOW);
+            bot.sendMessage(chat_id, "Room Light Turned ON\n\n/Show_Menu", "");
+        } else if (text == "/Room_Light_OFF") {
+            relayStates[2] = false;
+            digitalWrite(relayPins[2], HIGH);
+            bot.sendMessage(chat_id, "Room Light Turned OFF\n\n/Show_Menu", "");
+        } else if (text == "/Dummy_Light_ON") {
+            relayStates[3] = true;
+            digitalWrite(relayPins[3], LOW);
+            bot.sendMessage(chat_id, "Dummy Light Turned ON\n\n/Show_Menu", "");
+        } else if (text == "/Dummy_Light_OFF") {
+            relayStates[3] = false;
+            digitalWrite(relayPins[3], HIGH);
+            bot.sendMessage(chat_id, "Dummy Light Turned OFF\n\n/Show_MenuF", "");
+        } else if (text == "/Show_All_Light_Status") {
+            String statusMsg = "Relay Status:\n";
+            for (int j = 0; j < 4; j++) {
+                statusMsg += "Relay " + String(j + 1) + ": " + (relayStates[j] ? "ON\n" : "OFF\n");
+            }
+            bot.sendMessage(chat_id, statusMsg, "");
+        } else {
+            bot.sendMessage(chat_id, "Valid commands:\n/Tank_Light_ON, /Tank_Light_OFF\n/House_Back_Light_ON, /House_Back_Light_OFF\n/Room_Light_ON, /Room_Light_OFF\n/Dummy_Light_ON, /Dummy_Light_OFF\n/Show_All_Light_Status\n\n, /Show_Menu", "");
+        }
+    }
+}
+
+// -------------------- BUTTON EVENTS --------------------
+void button1Handler(AceButton*, uint8_t eventType, uint8_t) {
+  if (eventType == AceButton::kEventPressed) relayControl(0, true);
+  else if (eventType == AceButton::kEventReleased) relayControl(0, false);
+}
+void button2Handler(AceButton*, uint8_t eventType, uint8_t) {
+  if (eventType == AceButton::kEventPressed) relayControl(1, true);
+  else if (eventType == AceButton::kEventReleased) relayControl(1, false);
+}
+void button3Handler(AceButton*, uint8_t eventType, uint8_t) {
+  if (eventType == AceButton::kEventPressed) relayControl(2, true);
+  else if (eventType == AceButton::kEventReleased) relayControl(2, false);
+}
+void button4Handler(AceButton*, uint8_t eventType, uint8_t) {
+  if (eventType == AceButton::kEventPressed) relayControl(3, true);
+  else if (eventType == AceButton::kEventReleased) relayControl(3, false);
+}
