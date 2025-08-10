@@ -1,5 +1,5 @@
  /**********************************************************************************
- *  TITLE: Telegram + Manual (Switch) control 4 Relays using ESP32 with Real time feedback
+ *  TITLE: Telegram + Manual (Switch) + Local server control 4 Relays using ESP32 with Real time feedback
  *  Click on the following links to learn more. 
  *  YouTube Video: https://youtu.be/e4mtwrwoLnU
  *  Related Blog : https://iotcircuithub.com/esp32-projects/
@@ -34,7 +34,7 @@ const char* password = "air30349";
 
 // Telegram Bot
 const char* botToken = "8302149504:AAGer7qxSCQ96eapPkHGx1rYL171XKo7ngM";
-const long allowedChatIDs[] = {1874156167, 991581343};  // Add IDs here
+const long allowedChatIDs[] = {1874156167, 991581343, 867468063};  // Add IDs here
 const int totalUsers = sizeof(allowedChatIDs) / sizeof(allowedChatIDs[0]);
 
 bool isUserAllowed(long id) {
@@ -71,7 +71,7 @@ void handleNewMessages(int numNewMessages);
 
 // -------------------- LOCAL WEB UI --------------------
 String htmlPage() {
-  String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Relay 4"};
+  String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Dummy Light"};
 
   String html = "<!DOCTYPE html><html><head><title>ESP32 Relay Control</title>";
   html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
@@ -91,6 +91,12 @@ String htmlPage() {
 
   html += "<h1>VASANTHAMANI HOME AUTOMATION</h1>";
   html += "<div class='container'>";
+  html += "<div class='card'>";
+  html += "<div class='status' style='color:blue;'>Control All Lights</div>";
+  html += "<div class='btn-group'>";
+  html += "<a href='/All_ON'><button class='on'>ALL ON</button></a>";
+  html += "<a href='/All_OFF'><button class='off'>ALL OFF</button></a>";
+  html += "</div></div>";
 
   for (int i = 0; i < 4; i++) {
     String urlName = relayNames[i];
@@ -157,7 +163,7 @@ void setup() {
   // Local Web Server routes
 server.on("/", handleRoot);
 
-String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Relay 4"};
+String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Dummy Light"};
 for (int i = 0; i < 4; i++) {
   String urlName = relayNames[i];
   urlName.replace(" ", "_"); // Same formatting as in HTML
@@ -168,6 +174,16 @@ for (int i = 0; i < 4; i++) {
   });
   server.on(("/" + urlName + "_OFF").c_str(), [i]() {
     relayControl(i, false);
+    server.send(200, "text/html", htmlPage());
+  });
+  server.on("/All_ON", []() {
+    for (int i = 0; i < 4; i++) relayControl(i, true);
+    server.send(200, "text/html", htmlPage());
+  });
+
+  // Route for All Lights OFF
+  server.on("/All_OFF", []() {
+    for (int i = 0; i < 4; i++) relayControl(i, false);
     server.send(200, "text/html", htmlPage());
   });
 }
@@ -247,8 +263,22 @@ for (int i = 0; i < numNewMessages; i++) {
                 statusMsg += "Relay " + String(j + 1) + ": " + (relayStates[j] ? "ON\n" : "OFF\n");
             }
             bot.sendMessage(chat_id, statusMsg, "");
-        } else {
-            bot.sendMessage(chat_id, "Valid commands:\n/Tank_Light_ON, /Tank_Light_OFF\n/House_Back_Light_ON, /House_Back_Light_OFF\n/Room_Light_ON, /Room_Light_OFF\n/Dummy_Light_ON, /Dummy_Light_OFF\n/Show_All_Light_Status\n\n, /Show_Menu", "");
+            
+        } else if (text == "/All_ON") {
+          for (int j = 0; j < 4; j++) {
+              relayStates[j] = true;
+              digitalWrite(relayPins[j], LOW);
+          }
+          bot.sendMessage(chat_id, "✅ All Lights Turned ON\n\n/Show_Menu", "");
+      }else if (text == "/All_OFF") {
+            for (int j = 0; j < 4; j++) {
+                relayStates[j] = false;
+                digitalWrite(relayPins[j], HIGH);
+            }
+            bot.sendMessage(chat_id, "✅ All Lights Turned OFF\n\n/Show_Menu", "");
+        }
+        else {
+            bot.sendMessage(chat_id, "Valid commands:\n/Tank_Light_ON, /Tank_Light_OFF\n/House_Back_Light_ON, /House_Back_Light_OFF\n/Room_Light_ON, /Room_Light_OFF\n/Dummy_Light_ON, /Dummy_Light_OFF\n\n, /All_ON, /All_OFF\n/Show_All_Light_Status\n, /Show_Menu", "");
         }
     }
 }
