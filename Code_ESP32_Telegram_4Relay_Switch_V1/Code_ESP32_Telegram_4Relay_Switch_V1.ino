@@ -31,13 +31,15 @@ using namespace ace_button;
 // Wi-Fi Credentials (Same Router, No Internet Required for local control)
 const char* ssid = "Airtel_raja_2060";
 const char* password = "air30349";
+// unsigned long wifiReconnectInterval = 10000;  // try reconnect every 10 seconds
+// unsigned long lastWifiReconnectAttempt = 0;
 
 // Telegram Bot
 const char* botToken = "8302149504:AAGer7qxSCQ96eapPkHGx1rYL171XKo7ngM";
-const long allowedChatIDs[] = {1874156167, 991581343, 867468063};  // Add IDs here
+const uint64_t allowedChatIDs[] = {1874156167, 991581343, 867468063, 8337473690};  // Add IDs here
 const int totalUsers = sizeof(allowedChatIDs) / sizeof(allowedChatIDs[0]);
 
-bool isUserAllowed(long id) {
+bool isUserAllowed(uint64_t id) {
   for (int i = 0; i < totalUsers; i++) {
     if (allowedChatIDs[i] == id) {
       return true;
@@ -145,8 +147,24 @@ void setup() {
   }
   Serial.println("\nConnected to WiFi: " + WiFi.localIP().toString());
   digitalWrite(LED_BUILTIN, HIGH);
-
   client.setInsecure();
+  String ipMsg = "Running in IP Address: " + WiFi.localIP().toString();
+for (int i = 0; i < totalUsers; i++) {
+    char chatIdStr[21]; // Enough for 64-bit integer + null terminator
+    sprintf(chatIdStr, "%llu", (unsigned long long)allowedChatIDs[i]);
+    bot.sendMessage(chatIdStr, ipMsg);
+    // Menu option
+    String menuMsg = "🏠 *Home Automation Menu*\n";
+    menuMsg += "📶 IP Address: " + WiFi.localIP().toString() + "\n\n";
+    menuMsg += "/Tank_Light_ON  | /Tank_Light_OFF\n";
+    menuMsg += "/House_Back_Light_ON  | /House_Back_Light_OFF\n";
+    menuMsg += "/Room_Light_ON  | /Room_Light_OFF\n";
+    menuMsg += "/Dummy_Light_ON  | /Dummy_Light_OFF\n\n";
+    menuMsg += "/All_ON  | /All_OFF\n";
+    menuMsg += "/Show_All_Light_Status\n";
+    bot.sendMessage(chatIdStr, menuMsg);
+}
+
 
   // Button handlers
   config1.setEventHandler(button1Handler);
@@ -176,14 +194,21 @@ for (int i = 0; i < 4; i++) {
     relayControl(i, false);
     server.send(200, "text/html", htmlPage());
   });
+  // Route for All Lights ON
   server.on("/All_ON", []() {
-    for (int i = 0; i < 4; i++) relayControl(i, true);
+    for (int i = 0; i < 4; i++) {
+      relayControl(i, true);
+      delay(500); // delay between each relay ON
+    }
     server.send(200, "text/html", htmlPage());
   });
 
   // Route for All Lights OFF
   server.on("/All_OFF", []() {
-    for (int i = 0; i < 4; i++) relayControl(i, false);
+    for (int i = 0; i < 4; i++) {
+      relayControl(i, false);
+      delay(500); // delay between each relay OFF
+    }
     server.send(200, "text/html", htmlPage());
   });
 }
@@ -191,29 +216,47 @@ for (int i = 0; i < 4; i++) {
   server.begin();
 }
 
+
+// void ensureWiFiConnected() {
+//   if (WiFi.status() == WL_CONNECTED) {
+//     // Already connected, nothing to do
+//     return;
+//   }
+
+//   // Check if it's time to try reconnecting again
+//   if (millis() - lastWifiReconnectAttempt >= wifiReconnectInterval) {
+//     lastWifiReconnectAttempt = millis();
+//     Serial.println("WiFi disconnected! Attempting reconnect...");
+
+//     WiFi.disconnect(true);    // fully reset WiFi
+//     WiFi.mode(WIFI_STA);      // station mode
+//     WiFi.begin(ssid, password);
+//   }
+// }
+
 // -------------------- LOOP --------------------
 void loop() {
-  // Manual switch check
+  // ensureWiFiConnected();  // 🔹 Keep Wi-Fi alive
+
   button1.check();
   button2.check();
   button3.check();
   button4.check();
 
-  // Handle local web server requests
   server.handleClient();
 
-  // Telegram updates
-  int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
-  if (numNewMessages > 0) handleNewMessages(numNewMessages);
+  if (WiFi.status() == WL_CONNECTED) { // only poll when online
+    int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+    if (numNewMessages > 0) handleNewMessages(numNewMessages);
+  }
 
   delay(100);
 }
-
 // -------------------- TELEGRAM --------------------
 void handleNewMessages(int numNewMessages) {
 for (int i = 0; i < numNewMessages; i++) {
     String chat_id = bot.messages[i].chat_id;
-    long chat_id_num = chat_id.toInt();
+    uint64_t chat_id_num = strtoull(chat_id.c_str(), NULL, 10);
 
     Serial.println("Message from Chat ID: " + chat_id); // Prints any sender ID
 
@@ -268,18 +311,33 @@ for (int i = 0; i < numNewMessages; i++) {
           for (int j = 0; j < 4; j++) {
               relayStates[j] = true;
               digitalWrite(relayPins[j], LOW);
+              delay(500);
           }
           bot.sendMessage(chat_id, "✅ All Lights Turned ON\n\n/Show_Menu", "");
       }else if (text == "/All_OFF") {
             for (int j = 0; j < 4; j++) {
                 relayStates[j] = false;
                 digitalWrite(relayPins[j], HIGH);
+                delay(500);
             }
             bot.sendMessage(chat_id, "✅ All Lights Turned OFF\n\n/Show_Menu", "");
-        }
-        else {
-            bot.sendMessage(chat_id, "Valid commands:\n/Tank_Light_ON, /Tank_Light_OFF\n/House_Back_Light_ON, /House_Back_Light_OFF\n/Room_Light_ON, /Room_Light_OFF\n/Dummy_Light_ON, /Dummy_Light_OFF\n\n, /All_ON, /All_OFF\n/Show_All_Light_Status\n, /Show_Menu", "");
-        }
+      }else if (text == "SUJA") {
+        bot.sendMessage(chat_id, "♻️ Restarting Device...");
+        delay(1000); // small delay so message gets sent
+        bot.getUpdates(bot.last_message_received + 1); // clear pending messages
+        ESP.restart();
+      }else {
+        delay(100);
+        String menuMsg = "🏠 *Home Automation Menu*\n";
+        menuMsg += "📶 IP Address: " + WiFi.localIP().toString() + "\n\n";
+        menuMsg += "/Tank_Light_ON  | /Tank_Light_OFF\n";
+        menuMsg += "/House_Back_Light_ON  | /House_Back_Light_OFF\n";
+        menuMsg += "/Room_Light_ON  | /Room_Light_OFF\n";
+        menuMsg += "/Dummy_Light_ON  | /Dummy_Light_OFF\n\n";
+        menuMsg += "/All_ON  | /All_OFF\n";
+        menuMsg += "/Show_All_Light_Status\n";
+        bot.sendMessage(chat_id, menuMsg);
+      }
     }
 }
 
