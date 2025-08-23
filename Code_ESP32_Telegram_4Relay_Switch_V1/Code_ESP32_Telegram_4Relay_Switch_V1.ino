@@ -29,14 +29,14 @@
 using namespace ace_button;
 
 // Wi-Fi Credentials (Same Router, No Internet Required for local control)
-const char* ssid = "Airtel_raja_2060";
-const char* password = "air30349";
+const char* ssid = "RAJALINGAM";
+const char* password = "KJRkjr1994";
 // unsigned long wifiReconnectInterval = 10000;  // try reconnect every 10 seconds
 // unsigned long lastWifiReconnectAttempt = 0;
 
 // Telegram Bot
 const char* botToken = "8302149504:AAGer7qxSCQ96eapPkHGx1rYL171XKo7ngM";
-const uint64_t allowedChatIDs[] = {1874156167, 991581343, 867468063, 8337473690};  // Add IDs here
+const uint64_t allowedChatIDs[] = {1874156167, 991581343, 867468063, 8337473690, 5628705880};  // Add IDs here
 const int totalUsers = sizeof(allowedChatIDs) / sizeof(allowedChatIDs[0]);
 
 bool isUserAllowed(uint64_t id) {
