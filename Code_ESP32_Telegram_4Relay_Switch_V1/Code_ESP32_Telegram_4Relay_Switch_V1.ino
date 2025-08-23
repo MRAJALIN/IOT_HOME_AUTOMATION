@@ -28,6 +28,8 @@
 
 using namespace ace_button;
 
+bool lastSwitchStates[4] = {HIGH, HIGH, HIGH, HIGH};
+
 // Wi-Fi Credentials (Same Router, No Internet Required for local control)
 const char* ssid = "RAJALINGAM";
 const char* password = "KJRkjr1994";
@@ -132,9 +134,13 @@ void setup() {
 
   // Relay setup
   for (int i = 0; i < 4; i++) {
+    pinMode(switchPins[i], INPUT_PULLUP);   // ON/OFF switch
     pinMode(relayPins[i], OUTPUT);
-    digitalWrite(relayPins[i], HIGH);
-    pinMode(switchPins[i], INPUT_PULLUP);
+
+    // Set relay based on physical switch at startup
+    bool switchState = (digitalRead(switchPins[i]) == LOW); // LOW = switch ON
+    relayStates[i] = switchState;
+    digitalWrite(relayPins[i], switchState ? LOW : HIGH);   // relay follows switch
   }
 
   pinMode(LED_BUILTIN, OUTPUT);
@@ -238,10 +244,17 @@ for (int i = 0; i < 4; i++) {
 void loop() {
   // ensureWiFiConnected();  // 🔹 Keep Wi-Fi alive
 
-  button1.check();
-  button2.check();
-  button3.check();
-  button4.check();
+  for (int i = 0; i < 4; i++) {
+    bool currentState = digitalRead(switchPins[i]);
+    if (currentState != lastSwitchStates[i]) {
+      lastSwitchStates[i] = currentState;
+
+      // Only act on actual toggle (HIGH→LOW or LOW→HIGH)
+      if (currentState == LOW) {  // assuming switch pulls LOW when pressed
+        relayControl(i, !relayStates[i]); // toggle relay state
+      }
+    }
+  }
 
   server.handleClient();
 
@@ -343,18 +356,14 @@ for (int i = 0; i < numNewMessages; i++) {
 
 // -------------------- BUTTON EVENTS --------------------
 void button1Handler(AceButton*, uint8_t eventType, uint8_t) {
-  if (eventType == AceButton::kEventPressed) relayControl(0, true);
-  else if (eventType == AceButton::kEventReleased) relayControl(0, false);
+  if (eventType == AceButton::kEventPressed) relayControl(0, !relayStates[0]);
 }
 void button2Handler(AceButton*, uint8_t eventType, uint8_t) {
-  if (eventType == AceButton::kEventPressed) relayControl(1, true);
-  else if (eventType == AceButton::kEventReleased) relayControl(1, false);
+  if (eventType == AceButton::kEventPressed) relayControl(1, !relayStates[1]);
 }
 void button3Handler(AceButton*, uint8_t eventType, uint8_t) {
-  if (eventType == AceButton::kEventPressed) relayControl(2, true);
-  else if (eventType == AceButton::kEventReleased) relayControl(2, false);
+  if (eventType == AceButton::kEventPressed) relayControl(2, !relayStates[2]);
 }
 void button4Handler(AceButton*, uint8_t eventType, uint8_t) {
-  if (eventType == AceButton::kEventPressed) relayControl(3, true);
-  else if (eventType == AceButton::kEventReleased) relayControl(3, false);
+  if (eventType == AceButton::kEventPressed) relayControl(3, !relayStates[3]);
 }
