@@ -29,6 +29,7 @@
 using namespace ace_button;
 
 bool lastSwitchStates[4] = {HIGH, HIGH, HIGH, HIGH};
+String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Bathroom Light"};
 
 // Wi-Fi Credentials (Same Router, No Internet Required for local control)
 const char* ssid = "RAJALINGAM";
@@ -75,7 +76,7 @@ void handleNewMessages(int numNewMessages);
 
 // -------------------- LOCAL WEB UI --------------------
 String htmlPage() {
-  String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Dummy Light"};
+  // String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Bathroom Light"};
 
   String html = "<!DOCTYPE html><html><head><title>ESP32 Relay Control</title>";
   html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
@@ -137,10 +138,19 @@ void setup() {
     pinMode(switchPins[i], INPUT_PULLUP);   // ON/OFF switch
     pinMode(relayPins[i], OUTPUT);
 
-    // Set relay based on physical switch at startup
-    bool switchState = (digitalRead(switchPins[i]) == LOW); // LOW = switch ON
+    // Step 1: Force relays OFF immediately at boot (no flicker)
+    digitalWrite(relayPins[i], HIGH);   // HIGH = OFF for active LOW relay modules
+    relayStates[i] = false;
+  }
+
+  // Small delay to stabilize pins
+  delay(50);
+
+  // Step 2: Now read physical switch state and update relays properly
+  for (int i = 0; i < 4; i++) {
+    bool switchState = (digitalRead(switchPins[i]) == LOW); // LOW = switch pressed (ON)
     relayStates[i] = switchState;
-    digitalWrite(relayPins[i], switchState ? LOW : HIGH);   // relay follows switch
+    digitalWrite(relayPins[i], switchState ? LOW : HIGH);   // apply real state
   }
 
   pinMode(LED_BUILTIN, OUTPUT);
@@ -165,7 +175,7 @@ for (int i = 0; i < totalUsers; i++) {
     menuMsg += "/Tank_Light_ON  | /Tank_Light_OFF\n";
     menuMsg += "/House_Back_Light_ON  | /House_Back_Light_OFF\n";
     menuMsg += "/Room_Light_ON  | /Room_Light_OFF\n";
-    menuMsg += "/Dummy_Light_ON  | /Dummy_Light_OFF\n\n";
+    menuMsg += "/Bathroom_Light_ON  | /Bathroom_Light_OFF\n\n";
     menuMsg += "/All_ON  | /All_OFF\n";
     menuMsg += "/Show_All_Light_Status\n";
     bot.sendMessage(chatIdStr, menuMsg);
@@ -187,7 +197,7 @@ for (int i = 0; i < totalUsers; i++) {
   // Local Web Server routes
 server.on("/", handleRoot);
 
-String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Dummy Light"};
+// String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Bathroom Light"};
 for (int i = 0; i < 4; i++) {
   String urlName = relayNames[i];
   urlName.replace(" ", "_"); // Same formatting as in HTML
@@ -242,116 +252,103 @@ for (int i = 0; i < 4; i++) {
 
 // -------------------- LOOP --------------------
 void loop() {
-  // ensureWiFiConnected();  // 🔹 Keep Wi-Fi alive
-
-  for (int i = 0; i < 4; i++) {
-    bool currentState = digitalRead(switchPins[i]);
-    if (currentState != lastSwitchStates[i]) {
-      lastSwitchStates[i] = currentState;
-
-      // Only act on actual toggle (HIGH→LOW or LOW→HIGH)
-      if (currentState == LOW) {  // assuming switch pulls LOW when pressed
-        relayControl(i, !relayStates[i]); // toggle relay state
-      }
-    }
-  }
-
   server.handleClient();
 
-  if (WiFi.status() == WL_CONNECTED) { // only poll when online
+  if (WiFi.status() == WL_CONNECTED) { // poll Telegram when online
     int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
     if (numNewMessages > 0) handleNewMessages(numNewMessages);
   }
 
-  // delay(100);
+  // Check switch state changes
+  for (int i = 0; i < 4; i++) {
+    bool currentState = digitalRead(switchPins[i]);
+
+    if (currentState != lastSwitchStates[i]) {
+      lastSwitchStates[i] = currentState;
+
+      // Only act when switch changes
+      if (currentState == LOW) {  
+        relayControl(i, !relayStates[i]); // toggle relay state
+      }
+    }
+  }
 }
 // -------------------- TELEGRAM --------------------
 void handleNewMessages(int numNewMessages) {
-for (int i = 0; i < numNewMessages; i++) {
+  for (int i = 0; i < numNewMessages; i++) {
     String chat_id = bot.messages[i].chat_id;
     uint64_t chat_id_num = strtoull(chat_id.c_str(), NULL, 10);
 
-    Serial.println("Message from Chat ID: " + chat_id); // Prints any sender ID
+    Serial.println("Message from Chat ID: " + chat_id);
 
     if (!isUserAllowed(chat_id_num)) {
-        bot.sendMessage(chat_id, "❌ You are not authorized to control this bot.");
-        continue;
+      bot.sendMessage(chat_id, "❌ You are not authorized to control this bot.");
+      continue;
     }
 
-        String text = bot.messages[i].text;
-        Serial.println("Received command: " + text);
+    String text = bot.messages[i].text;
+    Serial.println("Received command: " + text);
 
-        if (text == "/Tank_Light_ON") {
-            relayStates[0] = true;
-            digitalWrite(relayPins[0], LOW);
-            bot.sendMessage(chat_id, "Tank Light turned ON\n\n/Show_Menu", "");
-        } else if (text == "/Tank_Light_OFF") {
-            relayStates[0] = false;
-            digitalWrite(relayPins[0], HIGH);
-            bot.sendMessage(chat_id, "Tank Light turned OFF\n\n/Show_Menu", "");
-        } else if (text == "/House_Back_Light_ON") {
-            relayStates[1] = true;
-            digitalWrite(relayPins[1], LOW);
-            bot.sendMessage(chat_id, "House Back Light Turned ON\n\n/Show_Menu", "");
-        } else if (text == "/House_Back_Light_OFF") {
-            relayStates[1] = false;
-            digitalWrite(relayPins[1], HIGH);
-            bot.sendMessage(chat_id, "House Back Light Turned OFF\n\n/Show_Menu", "");
-        } else if (text == "/Room_Light_ON") {
-            relayStates[2] = true;
-            digitalWrite(relayPins[2], LOW);
-            bot.sendMessage(chat_id, "Room Light Turned ON\n\n/Show_Menu", "");
-        } else if (text == "/Room_Light_OFF") {
-            relayStates[2] = false;
-            digitalWrite(relayPins[2], HIGH);
-            bot.sendMessage(chat_id, "Room Light Turned OFF\n\n/Show_Menu", "");
-        } else if (text == "/Dummy_Light_ON") {
-            relayStates[3] = true;
-            digitalWrite(relayPins[3], LOW);
-            bot.sendMessage(chat_id, "Dummy Light Turned ON\n\n/Show_Menu", "");
-        } else if (text == "/Dummy_Light_OFF") {
-            relayStates[3] = false;
-            digitalWrite(relayPins[3], HIGH);
-            bot.sendMessage(chat_id, "Dummy Light Turned OFF\n\n/Show_MenuF", "");
-        } else if (text == "/Show_All_Light_Status") {
-            String statusMsg = "Relay Status:\n";
-            for (int j = 0; j < 4; j++) {
-                statusMsg += "Relay " + String(j + 1) + ": " + (relayStates[j] ? "ON\n" : "OFF\n");
-            }
-            bot.sendMessage(chat_id, statusMsg, "");
-            
-        } else if (text == "/All_ON") {
-          for (int j = 0; j < 4; j++) {
-              relayStates[j] = true;
-              digitalWrite(relayPins[j], LOW);
-              delay(500);
-          }
-          bot.sendMessage(chat_id, "✅ All Lights Turned ON\n\n/Show_Menu", "");
-      }else if (text == "/All_OFF") {
-            for (int j = 0; j < 4; j++) {
-                relayStates[j] = false;
-                digitalWrite(relayPins[j], HIGH);
-                delay(500);
-            }
-            bot.sendMessage(chat_id, "✅ All Lights Turned OFF\n\n/Show_Menu", "");
-      }else if (text == "SUJA") {
-        bot.sendMessage(chat_id, "♻️ Restarting Device...");
-        delay(1000); // small delay so message gets sent
-        bot.getUpdates(bot.last_message_received + 1); // clear pending messages
-        ESP.restart();
-      }else {
-        delay(100);
-        String menuMsg = "🏠 *Home Automation Menu*\n";
-        menuMsg += "📶 IP Address: " + WiFi.localIP().toString() + "\n\n";
-        menuMsg += "/Tank_Light_ON  | /Tank_Light_OFF\n";
-        menuMsg += "/House_Back_Light_ON  | /House_Back_Light_OFF\n";
-        menuMsg += "/Room_Light_ON  | /Room_Light_OFF\n";
-        menuMsg += "/Dummy_Light_ON  | /Dummy_Light_OFF\n\n";
-        menuMsg += "/All_ON  | /All_OFF\n";
-        menuMsg += "/Show_All_Light_Status\n";
-        bot.sendMessage(chat_id, menuMsg);
+    if (text == "/Tank_Light_ON") {
+      relayControl(0, true);
+      bot.sendMessage(chat_id, "Tank Light turned ON\n\n/Show_Menu", "");
+    } else if (text == "/Tank_Light_OFF") {
+      relayControl(0, false);
+      bot.sendMessage(chat_id, "Tank Light turned OFF\n\n/Show_Menu", "");
+    } else if (text == "/House_Back_Light_ON") {
+      relayControl(1, true);
+      bot.sendMessage(chat_id, "House Back Light Turned ON\n\n/Show_Menu", "");
+    } else if (text == "/House_Back_Light_OFF") {
+      relayControl(1, false);
+      bot.sendMessage(chat_id, "House Back Light Turned OFF\n\n/Show_Menu", "");
+    } else if (text == "/Room_Light_ON") {
+      relayControl(2, true);
+      bot.sendMessage(chat_id, "Room Light Turned ON\n\n/Show_Menu", "");
+    } else if (text == "/Room_Light_OFF") {
+      relayControl(2, false);
+      bot.sendMessage(chat_id, "Room Light Turned OFF\n\n/Show_Menu", "");
+    } else if (text == "/Bathroom_Light_ON") {
+      relayControl(3, true);
+      bot.sendMessage(chat_id, "Bathroom Light Turned ON\n\n/Show_Menu", "");
+    } else if (text == "/Bathroom_Light_OFF") {
+      relayControl(3, false);
+      bot.sendMessage(chat_id, "Bathroom Light Turned OFF\n\n/Show_Menu", "");
+    } else if (text == "/Show_All_Light_Status") {
+      String statusMsg = "Relay Status:\n";
+      for (int j = 0; j < 4; j++) {
+        statusMsg += String(relayNames[j]) + ": " + (relayStates[j] ? "ON\n" : "OFF\n");
       }
+      bot.sendMessage(chat_id, statusMsg, "");
+    } else if (text == "/All_ON") {
+      for (int j = 0; j < 4; j++) {
+        relayControl(j, true);
+        delay(300);
+      }
+      bot.sendMessage(chat_id, "✅ All Lights Turned ON\n\n/Show_Menu", "");
+    } else if (text == "/All_OFF") {
+      for (int j = 0; j < 4; j++) {
+        relayControl(j, false);
+        delay(300);
+      }
+      bot.sendMessage(chat_id, "✅ All Lights Turned OFF\n\n/Show_Menu", "");
+    } else if (text == "SUJA") {
+      bot.sendMessage(chat_id, "♻️ Restarting Device...");
+      delay(1000);
+      bot.getUpdates(bot.last_message_received + 1); 
+      ESP.restart();
+    } else {
+      // Default menu
+      String menuMsg = "🏠 *Home Automation Menu*\n";
+      menuMsg += "📶 IP Address: " + WiFi.localIP().toString() + "\n\n";
+      menuMsg += "/Tank_Light_ON  | /Tank_Light_OFF\n";
+      menuMsg += "/House_Back_Light_ON  | /House_Back_Light_OFF\n";
+      menuMsg += "/Room_Light_ON  | /Room_Light_OFF\n";
+      menuMsg += "/Bathroom_Light_ON  | /Bathroom_Light_OFF\n\n";
+      menuMsg += "/All_ON  | /All_OFF\n";
+      menuMsg += "/Show_All_Light_Status\n";
+      bot.sendMessage(chat_id, menuMsg);
     }
+  }
 }
 
 // -------------------- BUTTON EVENTS --------------------
