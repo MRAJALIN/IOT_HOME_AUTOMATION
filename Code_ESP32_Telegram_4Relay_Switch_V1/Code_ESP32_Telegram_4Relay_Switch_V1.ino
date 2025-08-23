@@ -36,7 +36,7 @@ const char* password = "KJRkjr1994";
 
 // Telegram Bot
 const char* botToken = "8302149504:AAGer7qxSCQ96eapPkHGx1rYL171XKo7ngM";
-const uint64_t allowedChatIDs[] = {1874156167, 991581343, 867468063, 8337473690, 5628705880};  // Add IDs here
+const uint64_t allowedChatIDs[] = {1874156167, 991581343, 867468063, 8337473690, 5628705880, 8435774388};  // Add IDs here
 const int totalUsers = sizeof(allowedChatIDs) / sizeof(allowedChatIDs[0]);
 
 bool isUserAllowed(uint64_t id) {
@@ -250,7 +250,7 @@ void loop() {
     if (numNewMessages > 0) handleNewMessages(numNewMessages);
   }
 
-  delay(100);
+  // delay(100);
 }
 // -------------------- TELEGRAM --------------------
 void handleNewMessages(int numNewMessages) {
