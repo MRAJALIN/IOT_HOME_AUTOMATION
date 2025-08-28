@@ -34,8 +34,8 @@ String relayNames[4] = {"Tank Light", "House Back Light", "Room Light", "Bathroo
 // Wi-Fi Credentials (Same Router, No Internet Required for local control)
 const char* ssid = "RAJALINGAM";
 const char* password = "KJRkjr1994";
-// unsigned long wifiReconnectInterval = 10000;  // try reconnect every 10 seconds
-// unsigned long lastWifiReconnectAttempt = 0;
+unsigned long wifiReconnectInterval = 10000;  // try reconnect every 10 seconds
+unsigned long lastWifiReconnectAttempt = 0;
 
 // Telegram Bot
 const char* botToken = "8332082968:AAEs8bUV0f3qfkIiQ5HB06ks2pIeo7Ripeo";
@@ -233,25 +233,28 @@ for (int i = 0; i < 4; i++) {
 }
 
 
-// void ensureWiFiConnected() {
-//   if (WiFi.status() == WL_CONNECTED) {
-//     // Already connected, nothing to do
-//     return;
-//   }
+void ensureWiFiConnected() {
+  if (WiFi.status() == WL_CONNECTED) {
+    // Already connected, nothing to do
+    digitalWrite(LED_BUILTIN, HIGH);
+    return;
+  }
 
-//   // Check if it's time to try reconnecting again
-//   if (millis() - lastWifiReconnectAttempt >= wifiReconnectInterval) {
-//     lastWifiReconnectAttempt = millis();
-//     Serial.println("WiFi disconnected! Attempting reconnect...");
+  // Check if it's time to try reconnecting again
+  digitalWrite(LED_BUILTIN, LOW);
+  if (millis() - lastWifiReconnectAttempt >= wifiReconnectInterval) {
+    lastWifiReconnectAttempt = millis();
+    Serial.println("WiFi disconnected! Attempting reconnect...");
 
-//     WiFi.disconnect(true);    // fully reset WiFi
-//     WiFi.mode(WIFI_STA);      // station mode
-//     WiFi.begin(ssid, password);
-//   }
-// }
+    WiFi.disconnect(true);    // fully reset WiFi
+    WiFi.mode(WIFI_STA);      // station mode
+    WiFi.begin(ssid, password);
+  }
+}
 
 // -------------------- LOOP --------------------
 void loop() {
+  ensureWiFiConnected();
   server.handleClient();
 
   if (WiFi.status() == WL_CONNECTED) { // poll Telegram when online
