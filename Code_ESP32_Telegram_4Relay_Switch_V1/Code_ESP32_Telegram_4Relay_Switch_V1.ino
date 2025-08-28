@@ -38,7 +38,7 @@ const char* password = "KJRkjr1994";
 // unsigned long lastWifiReconnectAttempt = 0;
 
 // Telegram Bot
-const char* botToken = "8302149504:AAGer7qxSCQ96eapPkHGx1rYL171XKo7ngM";
+const char* botToken = "8332082968:AAEs8bUV0f3qfkIiQ5HB06ks2pIeo7Ripeo";
 const uint64_t allowedChatIDs[] = {1874156167, 991581343, 867468063, 8337473690, 5628705880, 8435774388};  // Add IDs here
 const int totalUsers = sizeof(allowedChatIDs) / sizeof(allowedChatIDs[0]);
 
