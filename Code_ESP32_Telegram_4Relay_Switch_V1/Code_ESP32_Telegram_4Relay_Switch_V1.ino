@@ -314,7 +314,7 @@ void handleNewMessages(int numNewMessages) {
       relayControl(3, false);
       bot.sendMessage(chat_id, "Bathroom Light Turned OFF\n\n/Show_Menu", "");
     } else if (text == "/Show_All_Light_Status") {
-      String statusMsg = "Relay Status:\n";
+      String statusMsg = "Light Status:\n";
       for (int j = 0; j < 4; j++) {
         statusMsg += String(relayNames[j]) + ": " + (relayStates[j] ? "ON\n" : "OFF\n");
       }
